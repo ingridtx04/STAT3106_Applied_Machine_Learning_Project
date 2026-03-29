@@ -6,18 +6,17 @@ from tqdm import tqdm
 
 from tokenizer import SMILESTokenizer, PAD_IDX
 
-MAX_LEN = 120
+MAX_LEN = 120 # obtained from sequence length distribution from data
 
 
 class ZINCDataset(Dataset):
-    # Load zinc-druglike-cano.csv on demand using byte offsets
-    # to avoid loading the entire file into memory
+    # Load zinc-druglike-cano.csv on demand using byte offsets to avoid loading the entire file into memory
 
     def __init__(self, csv_path, tokenizer, max_len=MAX_LEN, max_rows=None):
         self.csv_path = csv_path
         self.tokenizer = tokenizer
         self.max_len = max_len
-        self.max_rows = max_rows  # cap rows to keep RAM under control
+        self.max_rows = max_rows  # cap rows 
         self.offsets = None
         self._index()
 
@@ -39,14 +38,14 @@ class ZINCDataset(Dataset):
                         break
             pbar.close()
         self.offsets = np.array(offsets, dtype=np.int64)
-        del offsets  # free the temporary Python list immediately
+        del offsets  
 
     def __len__(self):
         return len(self.offsets)
 
     def __getitem__(self, idx):
         with open(self.csv_path, "rb") as f:
-            f.seek(int(self.offsets[idx]))  # int() handles tensor or numpy scalar safely
+            f.seek(int(self.offsets[idx]))  
             smi = f.readline().decode("utf-8").strip()
         indices = self.tokenizer.encode(smi, add_sos=True, add_eos=True, max_len=self.max_len)
         seq = torch.tensor(indices, dtype=torch.long)
@@ -65,25 +64,25 @@ def collate_fn(batch):
 
 
 def build_dataloaders(csv_path, tokenizer, batch_size=512, val_split=0.1, test_split=0.1, num_workers=0, seed=42, max_rows=None):
+    # Build dataset and split into train/val/test using a single random permutation of indices (no copying of data)
     dataset = ZINCDataset(csv_path, tokenizer, max_rows=max_rows)
     n = len(dataset)
 
     rng = torch.Generator().manual_seed(seed)
-    perm = torch.randperm(n, generator=rng)  # keep as tensor, never convert to list
+    perm = torch.randperm(n, generator=rng)  # keep as tensor
 
     n_test = max(1, int(n * test_split))
     n_val  = max(1, int(n * val_split))
-    # tensor slices share the same underlying storage — no copies made
     test_idx  = perm[:n_test]
     val_idx   = perm[n_test : n_test + n_val]
     train_idx = perm[n_test + n_val :]
-    del perm  # free the full permutation tensor once slices are made
+    del perm 
 
     pin = torch.cuda.is_available()
 
     def make_loader(idx, shuffle):
         return DataLoader(
-            Subset(dataset, idx),  # Subset holds the tensor slice, not a list
+            Subset(dataset, idx), 
             batch_size=batch_size,
             shuffle=shuffle,
             collate_fn=collate_fn,

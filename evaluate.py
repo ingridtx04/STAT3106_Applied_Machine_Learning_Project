@@ -11,7 +11,6 @@ if _contrib_path not in sys.path:
     sys.path.insert(0, _contrib_path)
 from SA_Score import sascorer
 
-
 def _clean_smiles (smi):
     # Return canonical SMILES, or None if the string is invalid
     mol = Chem.MolFromSmiles(smi)
@@ -35,8 +34,6 @@ def uniqueness(valid_smiles):
     unique = list(dict.fromkeys(canonical))
     rate = len(unique) / len(canonical) if canonical else 0.0
     return rate, unique
-
-
 def novelty(unique_smiles, reference_set):
     # rate of unique valid molecules not seen in the training set
     if not unique_smiles:
@@ -46,7 +43,7 @@ def novelty(unique_smiles, reference_set):
 
 
 def mean_qed(smiles_list):
-    # Mean drug-likeness score (QED) over valid molecules
+    # Mean drug-likeness score (QED) over valid molecules using RDKit
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None
@@ -56,7 +53,7 @@ def mean_qed(smiles_list):
 
 
 def mean_sa_score(smiles_list):
-    # Mean synthetic accessibility score (economic constraint), range [1 easy, 10 hard]
+    # Mean synthetic accessibility score (economic constraint), range [1, 10]
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None
@@ -83,13 +80,15 @@ def compute_metrics(generated_smiles, reference_set, lambda_=0.5):
     uniq_rate, unique = uniqueness(valid)
     nov_rate = novelty(unique, reference_set)
 
+    mr = mean_reward(unique, lambda_)
     return {
         "validity":    val_rate,
         "uniqueness":  uniq_rate,
         "novelty":     nov_rate,
         "mean_qed":    mean_qed(unique),
         "mean_sa":     mean_sa_score(unique),
-        "mean_reward": mean_reward(unique, lambda_),
+        "mean_reward": mr,
+        "net_reward":  val_rate * mr,   # reward per generation attempt
     }
 
 

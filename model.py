@@ -8,7 +8,6 @@ from tokenizer import PAD_IDX, SOS_IDX, EOS_IDX
 
 class Encoder(nn.Module):
     # Bidirectional LSTM encoder — maps a token sequence to (mu, log_var) in latent space
-
     def __init__(self, vocab_size, embed_dim=128, hidden_dim=512, latent_dim=256, num_layers=2, dropout=0.1):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=PAD_IDX)
@@ -38,7 +37,6 @@ class Encoder(nn.Module):
         context = torch.cat([h_last, c_last], dim=-1)     # (B, 4*hidden_dim)
         return self.fc_mu(context), self.fc_log_var(context)
 
-
 class Decoder(nn.Module):
     # LSTM decoder conditioned on a latent vector z
     def __init__(self, vocab_size, embed_dim=128, hidden_dim=512, latent_dim=256, num_layers=2, dropout=0.1):
@@ -56,6 +54,7 @@ class Decoder(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0,
         )
         self.output_proj = nn.Linear(hidden_dim, vocab_size)
+       
         # project z into initial hidden and cell states for all layers
         self.z_to_h = nn.Linear(latent_dim, num_layers * hidden_dim)
         self.z_to_c = nn.Linear(latent_dim, num_layers * hidden_dim)
@@ -65,12 +64,12 @@ class Decoder(nn.Module):
         h0 = self.z_to_h(z).view(self.num_layers, B, self.hidden_dim)
         c0 = self.z_to_c(z).view(self.num_layers, B, self.hidden_dim)
         return h0.contiguous(), c0.contiguous()
-
     def forward(self, z, target_input):
         h0, c0   = self._init_hidden(z)
         embedded = self.embedding(target_input)
         output, _ = self.lstm(embedded, (h0, c0))
-        return self.output_proj(output)  # (B, T, vocab_size)
+        return self.output_proj(output) 
+    
 
     @torch.no_grad()
     def sample(self, z, tokenizer, max_len=120, temperature=1.0, greedy=False):
@@ -107,7 +106,6 @@ class Decoder(nn.Module):
 
         return [tokenizer.decode(seq, strip_special=True) for seq in sequences]
 
-
 class VAE(nn.Module):
     # Full VAE: encoder → reparameterize → decoder
 
@@ -132,7 +130,7 @@ class VAE(nn.Module):
 
     @torch.no_grad()
     def encode(self, smiles_list, tokenizer, device):
-        # Encode a list of SMILES strings to latent vectors (mu, no noise)
+        # Encode SMILES strings to latent vectors (mu, no noise)
         seqs    = [torch.tensor(tokenizer.encode(s), dtype=torch.long) for s in smiles_list]
         lengths = torch.tensor([len(s) for s in seqs], dtype=torch.long)
         from torch.nn.utils.rnn import pad_sequence as _pad

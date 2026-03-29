@@ -1,6 +1,6 @@
 import re
 import json
-
+# We tokenize SMILES strings using a regex-based tokenizer following https://arxiv.org/pdf/1711.04810 
 
 SMILES_REGEX = r"(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\|\/|:|~|@|\?|>>?|\*|\$|\%[0-9]{2}|[0-9])"
 
@@ -17,8 +17,6 @@ UNK_IDX = 3
 
 
 class SMILESTokenizer:
-    # Regex-based SMILES tokenizer with a fixed vocabulary
-
     def __init__(self):
         self.token2idx = {}
         self.idx2token = {}

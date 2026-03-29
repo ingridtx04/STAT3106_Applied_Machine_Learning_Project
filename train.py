@@ -10,6 +10,15 @@ from tqdm import tqdm
 from tokenizer import PAD_IDX
 from model import VAE, PropertyPredictor
 
+from rdkit import Chem
+from rdkit.Chem import QED
+import rdkit, sys
+
+
+contrib_path = os.path.join(rdkit.__path__[0], "Contrib")
+if contrib_path not in sys.path:
+    sys.path.insert(0, contrib_path)
+from SA_Score import sascorer
 
 def reconstruction_loss(logits, target):
     # Masked cross-entropy: only penalise non-padding positions
@@ -35,7 +44,7 @@ def cyclical_kl_weight(global_step, steps_per_epoch, cycle_period_epochs=10, rat
 class VAETrainer:
     # Three-phase trainer for the SMILES VAE + economic constraint metric predictors
     # Phase 1: VAE only (recon + KL)
-    # Phase 2 (prop_start_epoch+): add property predictor training
+    # Phase 2: add property predictor training
 
     def __init__(self, vae, predictor_qed, predictor_sa, train_loader, val_loader,
                  device, lr=3e-4, kl_weight_max=1.0, kl_cycle_period=10,
@@ -61,14 +70,6 @@ class VAETrainer:
 
     def _get_rdkit_scores(self, smiles_list, device):
         # Compute QED and SA scores for a batch of SMILES
-        from rdkit import Chem
-        from rdkit.Chem import QED
-        import rdkit, sys
-        contrib_path = os.path.join(rdkit.__path__[0], "Contrib")
-        if contrib_path not in sys.path:
-            sys.path.insert(0, contrib_path)
-        from SA_Score import sascorer
-
         qeds, sas = [], []
         for smi in smiles_list:
             mol = Chem.MolFromSmiles(smi) if smi else None

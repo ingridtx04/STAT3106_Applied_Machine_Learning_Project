@@ -4,7 +4,7 @@ from tokenizer import SMILESTokenizer
 from dataset import build_dataloaders
 from lstm_baseline import SMILESLanguageModel, LSTMTrainer
 
-# config — embed/hidden/layers match the VAE decoder for a fair comparison
+# config 
 CSV_PATH   = "ZINC20-Druglike/zinc-druglike-cano.csv"
 VOCAB_PATH = "vocab.json"
 CKPT_DIR   = "checkpoints_lstm"
