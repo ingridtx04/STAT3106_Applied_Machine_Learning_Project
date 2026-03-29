@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Model checkpoints
+checkpoints/
+checkpoints_lstm/
+
+# Dataset
+ZINC20-Druglike/
+
+# Generated files
