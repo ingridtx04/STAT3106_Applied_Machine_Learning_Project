@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PennyChem: Molecule Generation Under a Synthesis Budget</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1a2e;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --bg: #fafaf8;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --code-bg: #f1f5f9;
+    --green: #16a34a;
+    --amber: #d97706;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.75;
+    font-size: 17px;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    background: var(--ink);
+    color: #fff;
+    padding: 80px 24px 64px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 60%, rgba(37,99,235,0.25) 0%, transparent 60%),
+                radial-gradient(ellipse at 75% 20%, rgba(99,102,241,0.2) 0%, transparent 55%);
+  }
+  .hero-inner { position: relative; max-width: 760px; margin: 0 auto; }
+  .hero-tag {
+    display: inline-block;
+    background: rgba(37,99,235,0.3);
+    border: 1px solid rgba(37,99,235,0.5);
+    color: #93c5fd;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 100px;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(28px, 5vw, 48px);
+    line-height: 1.2;
+    margin-bottom: 16px;
+    color: #fff;
+  }
+  .hero h1 em { font-style: italic; color: #93c5fd; }
+  .hero-sub {
+    color: #94a3b8;
+    font-size: 15px;
+    margin-bottom: 32px;
+  }
+  .hero-authors {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .author-pill {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 6px 16px;
+    border-radius: 100px;
+    font-size: 14px;
+    color: #cbd5e1;
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── NAV ── */
+  .toc-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 0 24px;
+  }
+  .toc-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toc-inner::-webkit-scrollbar { display: none; }
+  .toc-inner a {
+    display: block;
+    padding: 14px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+  }
+  .toc-inner a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── SECTIONS ── */
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: none; }
+
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 30px;
+    margin-bottom: 24px;
+    line-height: 1.25;
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 32px 0 12px;
+    color: var(--ink);
+  }
+  p { margin-bottom: 18px; color: #374151; }
+
+  /* ── HYPOTHESIS BOX ── */
+  .hypothesis {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 20px 24px;
+    border-radius: 0 8px 8px 0;
+    margin: 28px 0;
+  }
+  .hypothesis strong { color: var(--accent); display: block; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .hypothesis p { margin: 0; font-weight: 500; color: var(--ink); }
+
+  /* ── FORMULA ── */
+  .formula-block {
+    background: var(--ink);
+    color: #e2e8f0;
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    text-align: center;
+    padding: 24px;
+    border-radius: 10px;
+    margin: 28px 0;
+    letter-spacing: 0.03em;
+  }
+  .formula-block span { color: #93c5fd; }
+
+  /* ── RESULTS TABLE ── */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 28px 0;
+    font-size: 14.5px;
+  }
+  .results-table th {
+    background: var(--ink);
+    color: #fff;
+    padding: 11px 16px;
+    text-align: left;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .results-table th:first-child { border-radius: 8px 0 0 0; }
+  .results-table th:last-child { border-radius: 0 8px 0 0; }
+  .results-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 13.5px;
+  }
+  .results-table tr:nth-child(even) td { background: #f9fafb; }
+  .results-table td:first-child { font-family: 'DM Sans', sans-serif; font-weight: 500; color: var(--ink); }
+  .highlight-cell { color: var(--green); font-weight: 600; }
+
+  /* ── ARCH GRID ── */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 28px 0;
+  }
+  @media (max-width: 560px) { .arch-grid { grid-template-columns: 1fr; } }
+  .arch-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    background: var(--card);
+  }
+  .arch-card-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .arch-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .arch-card p { font-size: 13.5px; margin: 0; color: var(--muted); }
+
+  /* ── ABLATION TABLE ── */
+  .ablation-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 14px;
+  }
+  .ablation-table th {
+    background: #f3f4f6;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+  }
+  .ablation-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .ablation-table td:nth-child(2) { font-family: 'DM Mono', monospace; font-weight: 600; color: var(--accent); text-align: center; }
+  .ablation-table tr:last-child td { border-bottom: none; }
+
+  /* ── NEXT EXPERIMENTS ── */
+  .experiment-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 16px;
+    background: var(--card);
+    position: relative;
+    padding-left: 32px;
+  }
+  .experiment-card::before {
+    content: attr(data-num);
+    position: absolute;
+    left: -1px;
+    top: -1px;
+    bottom: -1px;
+    width: 6px;
+    background: var(--accent);
+    border-radius: 10px 0 0 10px;
+  }
+  .experiment-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .experiment-card p { margin: 0; font-size: 14px; color: #4b5563; }
+
+  /* ── SMILES SAMPLES ── */
+  .smiles-grid { display: flex; flex-direction: column; gap: 8px; margin: 20px 0; }
+  .smiles-pill {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    color: #1e3a5f;
+    word-break: break-all;
+  }
+
+  /* ── REFERENCES ── */
+  .ref-list { list-style: none; }
+  .ref-list li {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: #374151;
+    padding-left: 20px;
+    text-indent: -20px;
+    line-height: 1.65;
+  }
+  .ref-list li:last-child { border-bottom: none; }
+  .ref-list a { color: var(--accent); text-decoration: none; }
+  .ref-list a:hover { text-decoration: underline; }
+  .ref-list em { font-style: italic; }
+
+  /* ── LOSS CURVE NOTE ── */
+  .figure-note {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 20px 0;
+  }
+  .figure-note strong { color: var(--ink); }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--card);
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-tag">STAT3106 · Applied Machine Learning · Mid-Review</div>
+    <h1>PennyChem: Molecule Generation<br>Under a <em>Synthesis Budget</em></h1>
+    <p class="hero-sub">Technical Blog Post — Prototype Checkpoint</p>
+    <div class="hero-authors">
+      <span class="author-pill">Xinyi Gui · xg2426</span>
+      <span class="author-pill">Ingrid (Tongxin) Wu · tw2998</span>
+    </div>
+  </div>
+</header>
+
+<!-- NAV -->
+<nav class="toc-bar">
+  <div class="toc-inner">
+    <a href="#background">Background</a>
+    <a href="#method">Method</a>
+    <a href="#results">Results</a>
+    <a href="#ablation">Ablation Plan</a>
+    <a href="#references">References</a>
+  </div>
+</nav>
+
+<main class="container">
+
+  <!-- ── BACKGROUND ── -->
+  <section id="background">
+    <div class="section-label">01 · Background</div>
+    <h2>Why synthesizability matters</h2>
+
+    <p>Drug discovery is expensive and slow. Getting a single compound from early-stage discovery to an approved therapy typically takes over a decade and costs around $2 billion. A big part of the problem is the sheer size of chemical space — the number of possible drug-like molecules is estimated at around 10<sup>60</sup>, which makes any kind of exhaustive search completely impractical.</p>
+
+    <p>Generative models have become a popular approach for proposing new molecular candidates computationally. But most of these models focus almost entirely on predicted properties like drug-likeness or binding affinity, without asking a more basic question: <strong>can this molecule actually be made?</strong> A molecule with a great QED score is not very useful if synthesizing it would require 15 steps and reagents that cost thousands of dollars per gram.</p>
+
+    <h3>Prior Work</h3>
+    <p>The most directly relevant prior work is the SMILES VAE (Gómez-Bombarelli et al., 2018), which showed that training a VAE on SMILES strings gives a continuous latent space where gradient-based property optimization is possible. Our model builds directly on this. The VAE framework itself is from Kingma & Welling (2014), and we use cyclical KL annealing from Fu et al. (2019) to prevent posterior collapse during training. For tokenization, we follow Schwaller et al. (2019), splitting SMILES into chemically meaningful tokens rather than individual characters.</p>
+    <p>None of these works explicitly optimize for synthesis cost during generation — that is the gap we are trying to fill.</p>
+
+    <h3>Our Approach: Adding a Cost Constraint</h3>
+    <p>The SA score is a standard proxy for synthesis difficulty, ranging from 1 (easy) to 10 (practically impossible at scale). It is based on how frequently the substructures of a molecule appear in known compounds. Molecules built from common, purchasable fragments score lower. It is imperfect, but fast and widely used as a first-pass filter.</p>
+    <p>Our idea is simple: instead of optimizing only for drug-likeness, we add a penalty for high SA scores.</p>
+
+    <div class="formula-block">
+      R(m) = <span>QED(m)</span> − λ · <span>SA<sub>norm</sub>(m)</span>
+    </div>
+
+    <p>SA<sub>norm</sub> maps the SA score to [0, 1], and λ controls how much we care about synthesis cost relative to QED. A small λ means we mostly care about drug-likeness; a large λ means we really want the molecule to be makeable. By sweeping λ, we can trace out the trade-off between the two.</p>
+
+    <div class="hypothesis">
+      <strong>Core Hypothesis</strong>
+      <p>Adding an explicit synthesis cost penalty (λ > 0) will reduce the mean SA score of generated molecules compared to unconstrained generation (λ = 0), at the cost of reduced novelty and QED — with this trade-off directly controllable by the magnitude of λ.</p>
+    </div>
+  </section>
+
+  <!-- ── METHOD ── -->
+  <section id="method">
+    <div class="section-label">02 · Method</div>
+    <h2>Model architecture & training</h2>
+
+    <h3>Dataset</h3>
+    <p>We use the ZINC20-Druglike dataset, a curated collection of purchasable, drug-like small molecules represented as canonical SMILES strings. We use up to 500,000 molecules for training, with an 80/10/10 train/validation/test split determined by a fixed random seed. Downstream property scores (QED, SA) are computed on-the-fly using RDKit during training.</p>
+
+    <h3>Tokenization</h3>
+    <p>SMILES strings are tokenized using a regex-based approach following the Molecular Transformer convention (Schwaller et al., 2019). The tokenizer parses SMILES into chemically meaningful units — bracket atoms like <code>[NH2]</code>, two-character elements like <code>Br</code>, single atoms, and bond/ring symbols — rather than splitting character-by-character. This produces a vocabulary of ~70 tokens.</p>
+
+    <h3>Model Architecture</h3>
+
+    <div class="arch-grid">
+      <div class="arch-card">
+        <div class="arch-card-label">Encoder</div>
+        <h4>Bidirectional LSTM</h4>
+        <p>Maps token sequences to (μ, log σ²) in 256-dim latent space. Concatenates hidden + cell states from both directions.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-label">Decoder</div>
+        <h4>Unidirectional LSTM</h4>
+        <p>Generates SMILES autoregressively, conditioned on z via learned linear projections into initial hidden/cell states.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-label">Property Predictors ×2</div>
+        <h4>MLP (256 → 128 → 1)</h4>
+        <p>Predict QED and SA score from z. Enable differentiable reward computation in latent space during generation.</p>
+      </div>
+      <div class="arch-card">
+        <div class="arch-card-label">Latent Space</div>
+        <h4>Gaussian, dim = 256</h4>
+        <p>Reparameterization trick during training. Gradient ascent on z at inference time to maximize R(z).</p>
+      </div>
+    </div>
+
+    <h3>Training Procedure</h3>
+    <p><strong>Phase 1 (Epochs 1–14):</strong> VAE trained with reconstruction loss (masked cross-entropy) plus KL divergence. Cyclical KL annealing (Fu et al., 2019) prevents posterior collapse by linearly ramping the KL weight over cycles of 10 epochs.</p>
+    <p><strong>Phase 2 (Epochs 15–30):</strong> Property predictors trained jointly. At each batch, the decoder greedily decodes μ to SMILES, computes QED and SA via RDKit, and trains the predictors via MSE loss. VAE and predictors use separate Adam optimizers (lr = 3×10⁻⁴).</p>
+
+    <h3>Constrained Generation</h3>
+    <p>At generation time, we run 50 steps of Adam-based gradient ascent in latent space (lr = 0.01) with a small L2 anchor penalty (β = 0.01) to maximize the reward R(z). The decoder then samples from the optimized z to produce SMILES.</p>
+
+    <h3>LSTM Baseline</h3>
+    <p>A character-level LSTM language model trained directly on SMILES token sequences, without any latent space or property conditioning. Same architecture dimensions (embed=128, hidden=512, 2 layers), 30 epochs. This captures distributional statistics of the training data without any property optimization.</p>
+  </section>
+
+  <!-- ── RESULTS ── -->
+  <section id="results">
+    <div class="section-label">03 · Preliminary Results</div>
+    <h2>Training & evaluation</h2>
+
+    <h3>Training Curves</h3>
+    <p>Both models were trained for 30 epochs. VAE reconstruction loss dropped from ~1.1 to ~0.35. The KL loss started at ~0.2 at the beginning of each annealing cycle and came down close to 0 by the end, suggesting the cyclical annealing worked — the model did not collapse to ignoring the latent space. Validation loss stabilized around 0.57. The LSTM baseline converged similarly, with train and val loss both reaching ~0.57 and no obvious overfitting gap.</p>
+
+    <div class="figure-note">
+      <strong>Figure:</strong> Loss curves (VAE reconstruction loss, VAE KL & val loss, LSTM loss) are available as <code>loss_curve.png</code> in the repository.
+    </div>
+
+    <h3>Generation Samples</h3>
+    <p>200 molecules were generated per method. Sample outputs from the Constrained VAE (λ=0.5):</p>
+    <div class="smiles-grid">
+      <div class="smiles-pill">CO[C@H](CO)CNC(=O)Cn1cncn1</div>
+      <div class="smiles-pill">CC(=O)N[C@@H](C)C(=O)N[C@H](C)C(N)=O</div>
+      <div class="smiles-pill">C[S@](=O)C1CN(C(=O)CNCCO)C1</div>
+    </div>
+    <p>All parse successfully with RDKit and show features characteristic of drug-like fragments (amide bonds, stereocenters, heteroaromatic rings).</p>
+
+    <h3>Quantitative Results</h3>
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>LSTM Baseline</th>
+          <th>VAE (λ=0)</th>
+          <th>VAE (λ=0.5)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Validity</td><td>0.9950</td><td>0.9950</td><td class="highlight-cell">1.0000</td></tr>
+        <tr><td>Uniqueness</td><td>1.0000</td><td>1.0000</td><td>1.0000</td></tr>
+        <tr><td>Novelty</td><td>0.9899</td><td>1.0000</td><td>0.9850</td></tr>
+        <tr><td>Mean QED</td><td>0.5398</td><td>0.5431</td><td>0.5368</td></tr>
+        <tr><td>Mean SA Score ↓</td><td>3.3676</td><td>3.3805</td><td class="highlight-cell">3.3313</td></tr>
+        <tr><td>Mean Reward</td><td>0.4083</td><td>0.4109</td><td>0.4073</td></tr>
+      </tbody>
+    </table>
+
+    <p>The results are directionally consistent with our hypothesis. The constrained VAE (λ=0.5) achieves the lowest mean SA score (3.33 vs. 3.38 for the unconstrained VAE), meaning it generates slightly easier-to-synthesize molecules. As expected, this comes with a small drop in QED (0.537 vs. 0.543). All three models achieve near-perfect validity and uniqueness. The differences at λ=0.5 are modest — we expect the effect to become more pronounced at higher λ values, which is the focus of our next experiments.</p>
+  </section>
+
+  <!-- ── ABLATION ── -->
+  <section id="ablation">
+    <div class="section-label">04 · Ablation Plan</div>
+    <h2>What we're testing next</h2>
+
+    <h3>λ Sweep</h3>
+    <table class="ablation-table">
+      <thead>
+        <tr><th>Experiment</th><th>λ</th><th>What it tests</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>LSTM Baseline</td><td>—</td><td>Unconstrained sequence-level generation; no latent optimization</td></tr>
+        <tr><td>VAE Unconstrained</td><td>0.0</td><td>Effect of latent space alone, no synthesis penalty</td></tr>
+        <tr><td>VAE Low Constraint</td><td>0.2</td><td>Mild cost penalty; prioritizes QED with light SA nudge</td></tr>
+        <tr><td>VAE Medium Constraint</td><td>0.5</td><td>Balanced trade-off (default, already run)</td></tr>
+        <tr><td>VAE High Constraint</td><td>1.0</td><td>Strong synthesis penalty; tests maximum feasibility gain</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Next Two Experiments (Priority Order)</h3>
+
+    <div class="experiment-card" data-num="1">
+      <h4>Full λ Sweep (λ ∈ {0.0, 0.2, 0.5, 1.0})</h4>
+      <p>This is the core experiment. By running the ConstrainedGenerator across four λ values and reporting all six metrics, we can plot Pareto curves showing the trade-off between SA score and QED/novelty. Expected finding: SA score decreases monotonically with λ, while novelty and QED degrade slightly. If SA does not decrease with λ, it suggests the property predictors are not well calibrated — which is itself an informative result.</p>
+    </div>
+
+    <div class="experiment-card" data-num="2">
+      <h4>Property Predictor Calibration Check</h4>
+      <p>Before trusting the λ sweep, we need to validate that our QED and SA predictors are accurate guides in latent space. We will encode a held-out set of molecules, run the predictors, and compare predicted vs. RDKit-computed scores. High correlation (R² > 0.7) is needed for gradient ascent to meaningfully steer generation.</p>
+    </div>
+  </section>
+
+  <!-- ── REFERENCES ── -->
+  <section id="references">
+    <div class="section-label">05 · References</div>
+    <h2>Literature</h2>
+    <ul class="ref-list">
+      <li>Fu, H., Li, C., Liu, X., Gao, J., Celikyilmaz, A., & Carin, L. (2019). Cyclical annealing schedule: A simple approach to mitigating KL vanishing. <em>Proceedings of NAACL-HLT 2019.</em> <a href="https://arxiv.org/abs/1903.10145" target="_blank">https://arxiv.org/abs/1903.10145</a></li>
+      <li>Gómez-Bombarelli, R., Wei, J. N., Duvenaud, D., Hernández-Lobato, J. M., Sánchez-Lengeling, B., Sheberla, D., Aguilera-Iparraguirre, J., Hirzel, T. D., Adams, R. P., & Aspuru-Guzik, A. (2018). Automatic chemical design using a data-driven continuous representation of molecules. <em>ACS Central Science, 4</em>(2), 268–276. <a href="https://arxiv.org/abs/1610.02415" target="_blank">https://arxiv.org/abs/1610.02415</a></li>
+      <li>Kingma, D. P., & Welling, M. (2014). Auto-encoding variational bayes. <em>Proceedings of ICLR 2014.</em> <a href="https://arxiv.org/abs/1312.6114" target="_blank">https://arxiv.org/abs/1312.6114</a></li>
+      <li>Schwaller, P., Laino, T., Gaudin, T., Bolgar, P., Hunter, C. A., Bekas, C., & Lee, A. A. (2019). Molecular transformer: A model for uncertainty-calibrated chemical reaction prediction. <em>ACS Central Science, 5</em>(9), 1572–1583. <a href="https://arxiv.org/abs/1811.02633" target="_blank">https://arxiv.org/abs/1811.02633</a></li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>
+  PennyChem · STAT3106 Applied Machine Learning · Columbia University
+</footer>
+
+</body>
+</html>
