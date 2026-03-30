@@ -33,7 +33,7 @@ class ConstrainedGenerator:
         return qed - self.lambda_ * sa_norm
 
     def gradient_ascent(self, z_init, n_steps=50, lr=0.01):
-        # gradient ascent on z to maximise reward, with KL anchor to stay near prior
+        # gradient ascent on z to maximise reward, 
         z = z_init.clone().detach().requires_grad_(True)
         optimizer = torch.optim.Adam([z], lr=lr)
 
@@ -46,7 +46,6 @@ class ConstrainedGenerator:
             optimizer.step()
 
         return z.detach()
-
     def generate(self, n_molecules, z_init=None, n_steps=50, ga_lr=0.01, temperature=0.8, n_restarts=1):
         # Generate molecules constrained by the economic reward
         latent_dim = self.vae.encoder.fc_mu.out_features

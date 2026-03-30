@@ -2,9 +2,9 @@
 __pycache__/
 *.pyc
 
-# Model checkpoints
+# Check points
 checkpoints/
-checkpoints_lstm/
+checkpoints_*
 
 # Dataset
 ZINC20-Druglike/

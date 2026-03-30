@@ -11,7 +11,6 @@ from tokenizer import PAD_IDX, SOS_IDX, EOS_IDX
 
 class SMILESLanguageModel(nn.Module):
     # LSTM Baseline, predicts next token. 
-
     def __init__(self, vocab_size, embed_dim=128, hidden_dim=512, num_layers=2, dropout=0.1):
         super().__init__()
         self.hidden_dim  = hidden_dim
@@ -61,8 +60,6 @@ class SMILESLanguageModel(nn.Module):
                 break
 
         return [tokenizer.decode(seq, strip_special=True) for seq in sequences]
-
-
 class LSTMTrainer:
     def __init__(self, model, train_loader, val_loader, device,
                  lr=3e-4, checkpoint_dir="checkpoints_lstm"):
@@ -109,7 +106,6 @@ class LSTMTrainer:
                 total += self._loss(batch).item()
                 n     += 1
         return total / n
-
     def save_checkpoint(self, epoch, val_loss):
         path = os.path.join(self.checkpoint_dir, f"lstm_epoch{epoch:03d}.pt")
         torch.save({"epoch": epoch, "val_loss": val_loss, "model": self.model.state_dict()}, path)
