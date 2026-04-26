@@ -92,6 +92,49 @@ def compute_metrics(generated_smiles, reference_set, lambda_=0.5):
     }
 
 
+def mean_mw(smiles_list):
+    # Mean molecular weight (Da) over valid molecules
+    from rdkit.Chem import Descriptors
+    scores = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi) if smi else None
+        if mol is not None:
+            scores.append(float(Descriptors.MolWt(mol)))
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def feasibility_rate(smiles_list, sa_threshold=4.0):
+    # Fraction of molecules with SA ≤ threshold; returns (rate, feasible_smiles)
+    feasible = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi) if smi else None
+        if mol is not None and sascorer.calculateScore(mol) <= sa_threshold:
+            feasible.append(smi)
+    rate = len(feasible) / len(smiles_list) if smiles_list else 0.0
+    return rate, feasible
+
+
+def mean_scscore(smiles_list, scorer):
+    # Mean SCScore [1-5]; lower = easier to synthesize. Requires scscore package.
+    scores = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi) if smi else None
+        if mol is not None:
+            _, score = scorer.get_score_from_smi(smi)
+            scores.append(float(score))
+    return sum(scores) / len(scores) if scores else 5.0
+
+
+def mean_syba(smiles_list, syba):
+    # Mean SYBA score; higher = easier to synthesize. Requires syba package.
+    scores = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi) if smi else None
+        if mol is not None:
+            scores.append(float(syba.predict(smi=smi)))
+    return sum(scores) / len(scores) if scores else 0.0
+
+
 def print_metrics(metrics, title=""):
     if title:
         print(f"\n{'='*50}")

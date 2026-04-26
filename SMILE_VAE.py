@@ -11,16 +11,21 @@ CSV_PATH   = "ZINC20-Druglike/zinc-druglike-cano.csv"
 VOCAB_PATH = "vocab.json"
 CKPT_DIR   = "checkpoints"
 
-EMBED_DIM  = 128
-HIDDEN_DIM = 512
-LATENT_DIM = 256
-NUM_LAYERS = 2
-DROPOUT    = 0.1
-BATCH_SIZE = 512
-LR         = 3e-4
-EPOCHS     = 30
-KL_CYCLE   = 10
-PROP_START = 15  # epoch to start training property predictors
+EMBED_DIM   = 256
+HIDDEN_DIM  = 512           # decoder hidden dim
+LATENT_DIM  = 256
+NUM_LAYERS  = 3
+LAYER_DIMS  = [256, 512, 1024]  # progressive BiLSTM encoder layer widths
+DROPOUT     = 0.1
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 512))
+LR         = float(os.environ.get("LR", 3e-4))
+EPOCHS     = int(os.environ.get("EPOCHS", 30))
+KL_CYCLE   = int(os.environ.get("KL_CYCLE", 10))
+PROP_START = int(os.environ.get("PROP_START", 15))  # epoch to start training property predictors
+MAX_ROWS   = int(os.environ.get("MAX_ROWS", 500_000))
+SEED       = int(os.environ.get("SEED", 42))
+RESUME_FROM = os.environ.get("RESUME_FROM")
+SAVE_EVERY  = int(os.environ.get("SAVE_EVERY", 5))
 
 
 def get_device():
@@ -55,7 +60,7 @@ def build_tokenizer():
 
 
 def build_vae(vocab_size):
-    encoder = Encoder(vocab_size, EMBED_DIM, HIDDEN_DIM, LATENT_DIM, NUM_LAYERS, DROPOUT)
+    encoder = Encoder(vocab_size, EMBED_DIM, LAYER_DIMS, LATENT_DIM, DROPOUT)
     decoder = Decoder(vocab_size, EMBED_DIM, HIDDEN_DIM, LATENT_DIM, NUM_LAYERS, DROPOUT)
     return VAE(encoder, decoder)
 
@@ -68,7 +73,7 @@ if __name__ == "__main__":
 
     print("[Data] Indexing dataset ...")
     train_loader, val_loader, test_loader = build_dataloaders(
-        CSV_PATH, tokenizer, batch_size=BATCH_SIZE, num_workers=0, max_rows=500000
+        CSV_PATH, tokenizer, batch_size=BATCH_SIZE, num_workers=0, max_rows=MAX_ROWS, seed=SEED
     )
     print(f"[Data] {len(train_loader.dataset)} train / {len(val_loader.dataset)} val / {len(test_loader.dataset)} test")
 
@@ -85,5 +90,12 @@ if __name__ == "__main__":
         prop_start_epoch=PROP_START,
         checkpoint_dir=CKPT_DIR,
     )
-    trainer.fit(n_epochs=EPOCHS, save_every=5)
+
+    start_epoch = 1
+    if RESUME_FROM:
+        last_epoch = trainer.load_checkpoint(RESUME_FROM)
+        start_epoch = last_epoch + 1
+        print(f"[Checkpoint] Resumed from {RESUME_FROM} at epoch {last_epoch}")
+
+    trainer.fit(n_epochs=EPOCHS, start_epoch=start_epoch, save_every=SAVE_EVERY)
     print("\nTraining done. Open compare.ipynb to compare generation.")

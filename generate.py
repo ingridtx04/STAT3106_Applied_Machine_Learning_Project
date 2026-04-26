@@ -11,14 +11,17 @@ class ConstrainedGenerator:
     # Generate molecules by maximising R(z) = QED_pred(z) - lambda * SA_norm_pred(z)
 
     def __init__(self, vae, predictor_qed, predictor_sa, tokenizer,
-                 lambda_=0.5, beta=0.01, device=None):
+                 lambda_=0.5, beta=0.01, device=None, cost_fn=None,
+                 cost_terms=None):
         self.vae         = vae
         self.pred_qed    = predictor_qed
         self.pred_sa     = predictor_sa
         self.tokenizer   = tokenizer
-        self.lambda_ = lambda_
+        self.lambda_     = lambda_
         self.beta        = beta
         self.device      = device or next(vae.parameters()).device
+        self.cost_fn     = cost_fn    # single cost fn scaled by lambda_
+        self.cost_terms  = cost_terms # list of (cost_fn, lambda) pairs; overrides cost_fn
 
         # freeze all weights — only z will have gradients during generation
         for model in (self.vae, self.pred_qed, self.pred_sa):
@@ -27,10 +30,16 @@ class ConstrainedGenerator:
                 p.requires_grad_(False)
 
     def reward(self, z):
-        qed     = self.pred_qed.predict_qed(z)
-        sa      = self.pred_sa.predict_sa(z)
-        sa_norm = (sa - 1.0) / 9.0
-        return qed - self.lambda_ * sa_norm
+        qed = self.pred_qed.predict_qed(z)
+        if self.cost_terms is not None:
+            # multi-constraint: R(z) = QED - Σ λ_i · cost_i(z)
+            return qed - sum(lam * fn(z) for fn, lam in self.cost_terms)
+        if self.cost_fn is not None:
+            cost = self.cost_fn(z)
+        else:
+            sa   = self.pred_sa.predict_sa(z)
+            cost = (sa - 1.0) / 9.0
+        return qed - self.lambda_ * cost
 
     def gradient_ascent(self, z_init, n_steps=50, lr=0.01):
         # gradient ascent on z to maximise reward, 

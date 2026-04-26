@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Configuration ───────────────────────────────────────
+MAX_ROWS_TRAIN=1000000    # molecules for VAE and LSTM training
+MAX_ROWS_PRED=50000      # molecules for property predictor training
+SEED=42
+
+PYTHON=~/miniconda3/envs/stoa/bin/python
+LOG_DIR=logs
+mkdir -p "$LOG_DIR"
+
+step() {
+    echo ""
+    echo "=========================================="
+    echo "  Step $1: $2"
+    echo "  $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "=========================================="
+}
+
+run() {
+    local n="$1" label="$2" script="$3" max_rows="$4"
+    step "$n" "$label"
+    MAX_ROWS=$max_rows SEED=$SEED "$PYTHON" "$script" 2>&1 | tee "$LOG_DIR/${script%.py}.log"
+    echo "[Step $n done] $(date '+%H:%M:%S')"
+}
+
+echo "PennyChem — full training pipeline"
+echo "  MAX_ROWS_TRAIN=$MAX_ROWS_TRAIN  MAX_ROWS_PRED=$MAX_ROWS_PRED  SEED=$SEED"
+echo "Start: $(date '+%Y-%m-%d %H:%M:%S')"
+
+run 1 "VAE (BiLSTM encoder + property predictors)"  SMILE_VAE.py            $MAX_ROWS_TRAIN
+run 2 "LSTM baseline"                                train_lstm.py           $MAX_ROWS_TRAIN
+run 3 "MW predictor"                                 train_mw_predictor.py   $MAX_ROWS_PRED
+run 4 "SCScore predictor"                            train_scscore_predictor.py $MAX_ROWS_PRED
+run 5 "SYBA predictor"                               train_syba_predictor.py $MAX_ROWS_PRED
+
+echo ""
+echo "=========================================="
+echo "  All training complete"
+echo "  End: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  Logs: $LOG_DIR/"
+echo "=========================================="

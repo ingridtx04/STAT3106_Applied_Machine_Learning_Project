@@ -1,5 +1,6 @@
 import os
 import math
+import shutil
 
 import torch
 import torch.nn as nn
@@ -19,6 +20,18 @@ contrib_path = os.path.join(rdkit.__path__[0], "Contrib")
 if contrib_path not in sys.path:
     sys.path.insert(0, contrib_path)
 from SA_Score import sascorer
+
+
+def _to_cpu(obj):
+    if torch.is_tensor(obj):
+        return obj.detach().cpu()
+    if isinstance(obj, dict):
+        return {k: _to_cpu(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_cpu(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_to_cpu(v) for v in obj)
+    return obj
 
 def reconstruction_loss(logits, target):
     # Masked cross-entropy: only penalise non-padding positions
@@ -128,7 +141,7 @@ class VAETrainer:
                     smiles_batch = self.vae.decoder.sample(mu.detach(), tokenizer, max_len=120, greedy=True)
                 qed_true, sa_true = self._get_rdkit_scores(smiles_batch, self.device)
 
-                z_det    = z.detach()
+                z_det    = mu.detach()
                 qed_pred = self.pred_qed.predict_qed(z_det)
                 sa_pred  = self.pred_sa.predict_sa(z_det)
 
@@ -140,12 +153,14 @@ class VAETrainer:
                 self.opt_sa.step()
                 prop_loss_val = prop_loss.item()
 
-            total_recon += recon.item()
-            total_kl    += kl.item()
+            recon_val = recon.item()
+            kl_val    = kl.item()
+            total_recon += recon_val
+            total_kl    += kl_val
             total_prop  += prop_loss_val
             n_batches   += 1
             self.global_step += 1
-            pbar.set_postfix(recon=f"{recon.item():.4f}", kl=f"{kl.item():.4f}")
+            pbar.set_postfix(recon=f"{recon_val:.4f}", kl=f"{kl_val:.4f}")
 
         return {
             "recon": total_recon / n_batches,
@@ -182,16 +197,18 @@ class VAETrainer:
         torch.save({
             "epoch":       epoch,
             "val_loss":    val_loss,
-            "vae":         self.vae.state_dict(),
-            "pred_qed":    self.pred_qed.state_dict(),
-            "pred_sa":     self.pred_sa.state_dict(),
-            "opt_vae":     self.opt_vae.state_dict(),
+            "vae":         _to_cpu(self.vae.state_dict()),
+            "pred_qed":    _to_cpu(self.pred_qed.state_dict()),
+            "pred_sa":     _to_cpu(self.pred_sa.state_dict()),
+            "opt_vae":     _to_cpu(self.opt_vae.state_dict()),
+            "opt_qed":     _to_cpu(self.opt_qed.state_dict()),
+            "opt_sa":      _to_cpu(self.opt_sa.state_dict()),
             "global_step": self.global_step,
         }, path)
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             best_path = os.path.join(self.checkpoint_dir, "vae_best.pt")
-            torch.save(torch.load(path), best_path)
+            shutil.copyfile(path, best_path)
 
     def load_checkpoint(self, path):
         ckpt = torch.load(path, map_location=self.device)
@@ -199,6 +216,10 @@ class VAETrainer:
         self.pred_qed.load_state_dict(ckpt["pred_qed"])
         self.pred_sa.load_state_dict(ckpt["pred_sa"])
         self.opt_vae.load_state_dict(ckpt["opt_vae"])
+        if "opt_qed" in ckpt:
+            self.opt_qed.load_state_dict(ckpt["opt_qed"])
+        if "opt_sa" in ckpt:
+            self.opt_sa.load_state_dict(ckpt["opt_sa"])
         self.global_step   = ckpt.get("global_step", 0)
         self.best_val_loss = ckpt.get("val_loss", math.inf)
         return ckpt["epoch"]

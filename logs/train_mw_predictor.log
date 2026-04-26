@@ -1,0 +1,13 @@
+[Device] cuda
+[Tokenizer] 52 tokens
+[VAE] Loaded checkpoint from epoch 5
+[Data] Loading 10000 molecules ...
+[Data] 10000 valid molecules, MW range [200.0, 249.4]
+[Encode] Encoding molecules in batches of 256 ...
+[Train] Training MW predictor for 5 epochs ...
+  Epoch   1  MSE loss: 0.040304
+  Epoch   2  MSE loss: 0.011011
+  Epoch   3  MSE loss: 0.015165
+  Epoch   4  MSE loss: 0.009247
+  Epoch   5  MSE loss: 0.002558
+[Done] Saved MW predictor to checkpoints/mw_predictor.pt

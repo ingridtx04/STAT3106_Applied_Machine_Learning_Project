@@ -1,3 +1,4 @@
+import os
 import torch
 
 from tokenizer import SMILESTokenizer
@@ -9,32 +10,38 @@ CSV_PATH   = "ZINC20-Druglike/zinc-druglike-cano.csv"
 VOCAB_PATH = "vocab.json"
 CKPT_DIR   = "checkpoints_lstm"
 
-EMBED_DIM  = 128
+EMBED_DIM  = 256
 HIDDEN_DIM = 512
-NUM_LAYERS = 2
+NUM_LAYERS = 3
 DROPOUT    = 0.1
 BATCH_SIZE = 512
 LR         = 3e-4
-EPOCHS     = 30
+EPOCHS     = 5
+MAX_ROWS   = int(os.environ.get("MAX_ROWS", 500_000))
+SEED       = int(os.environ.get("SEED", 42))
+
+
+def get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     print(f"[Device] {device}")
 
-    tok = SMILESTokenizer()
-    tok.load(VOCAB_PATH)
-    print(f"[Tokenizer] Loaded vocab ({tok.vocab_size} tokens)")
+    tokenizer = SMILESTokenizer()
+    tokenizer.load(VOCAB_PATH)
+    print(f"[Tokenizer] Loaded vocab ({tokenizer.vocab_size} tokens)")
 
     print("[Data] Indexing dataset ...")
-    train_loader, val_loader, _ = build_dataloaders(
-        CSV_PATH, tok, batch_size=BATCH_SIZE, num_workers=0, max_rows=500000
+    train_loader, val_loader, test_loader = build_dataloaders(
+        CSV_PATH, tokenizer, batch_size=BATCH_SIZE, num_workers=0, max_rows=MAX_ROWS, seed=SEED
     )
-    print(f"[Data] {len(train_loader.dataset)} train / {len(val_loader.dataset)} val")
+    print(f"[Data] {len(train_loader.dataset)} train / {len(val_loader.dataset)} val / {len(test_loader.dataset)} test")
 
-    model = SMILESLanguageModel(tok.vocab_size, EMBED_DIM, HIDDEN_DIM, NUM_LAYERS, DROPOUT)
+    model = SMILESLanguageModel(tokenizer.vocab_size, EMBED_DIM, HIDDEN_DIM, NUM_LAYERS, DROPOUT)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"[Model] {n_params:,} trainable parameters")
+    print(f"[LSTM_Model] {n_params:,} trainable parameters")
 
     trainer = LSTMTrainer(
         model, train_loader, val_loader,

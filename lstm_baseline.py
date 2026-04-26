@@ -11,7 +11,7 @@ from tokenizer import PAD_IDX, SOS_IDX, EOS_IDX
 
 class SMILESLanguageModel(nn.Module):
     # LSTM Baseline, predicts next token. 
-    def __init__(self, vocab_size, embed_dim=128, hidden_dim=512, num_layers=2, dropout=0.1):
+    def __init__(self, vocab_size, embed_dim=256, hidden_dim=1024, num_layers=4, dropout=0.1):
         super().__init__()
         self.hidden_dim  = hidden_dim
         self.num_layers  = num_layers
