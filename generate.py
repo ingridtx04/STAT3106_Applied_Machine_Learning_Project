@@ -1,14 +1,55 @@
 import math
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-from model import VAE, PropertyPredictor
+from model import NormalizedPropertyPredictor, VAE, PropertyPredictor
 from tokenizer import SMILESTokenizer
 
 
+class NormalizedPropertyAdapter(nn.Module):
+    # Standardization: z_norm = (z - x_mean) / x_std,
+    # and property = pred_norm * y_std + y_mean.
+
+    def __init__(self, checkpoint_path, device=None):
+        super().__init__()
+        ckpt = torch.load(checkpoint_path, map_location=device or "cpu")
+        self.properties = list(ckpt["properties"])
+        self.property_to_idx = {prop: i for i, prop in enumerate(self.properties)}
+        self.head = NormalizedPropertyPredictor(
+            input_dim=ckpt["x_mean"].shape[1],
+            output_dim=len(self.properties),
+            hidden_dim=ckpt["hidden_dim"],
+        )
+        self.head.load_state_dict(ckpt["model_state"])
+
+        self.register_buffer("x_mean", ckpt["x_mean"].float())
+        self.register_buffer("x_std", ckpt["x_std"].float())
+        self.register_buffer("y_mean", ckpt["y_mean"].float())
+        self.register_buffer("y_std", ckpt["y_std"].float())
+
+        if device is not None:
+            self.to(device)
+
+    def forward(self, z):
+        z_norm = (z - self.x_mean.to(z.device)) / self.x_std.to(z.device)
+        pred_norm = self.head(z_norm)
+        return pred_norm * self.y_std.to(z.device) + self.y_mean.to(z.device)
+
+    def predict_property(self, z, prop):
+        idx = self.property_to_idx[prop]
+        return self.forward(z)[:, idx:idx + 1]
+
+    def predict_qed(self, z):
+        return self.predict_property(z, "qed")
+
+    def predict_sa(self, z):
+        return self.predict_property(z, "sa")
+
+
 class ConstrainedGenerator:
-    # Generate molecules by maximising R(z) = QED_pred(z) - lambda * SA_norm_pred(z)
+    # Generate molecules by maximising R(z) = QED_pred(z) - lambda * cost_from_prediction(z)
 
     def __init__(self, vae, predictor_qed, predictor_sa, tokenizer,
                  lambda_=0.5, beta=0.01, device=None, cost_fn=None,
@@ -20,7 +61,7 @@ class ConstrainedGenerator:
         self.lambda_     = lambda_
         self.beta        = beta
         self.device      = device or next(vae.parameters()).device
-        self.cost_fn     = cost_fn    # single cost fn scaled by lambda_
+        self.cost_fn     = cost_fn    # single cost function scaled by lambda_
         self.cost_terms  = cost_terms # list of (cost_fn, lambda) pairs; overrides cost_fn
 
         # freeze all weights — only z will have gradients during generation

@@ -9,7 +9,6 @@ from tokenizer import PAD_IDX, SOS_IDX, EOS_IDX
 class Encoder(nn.Module):
     # Progressive bidirectional LSTM encoder.
     # Each layer's bidirectional output (2×hidden) feeds the next layer's input,
-    # naturally doubling width: embed→512→1024→2048→2048 through the sequence.
     #
     # layer_dims controls each BiLSTM's hidden size:
     #   [256, 512, 1024, 1024]  →  per-step outputs: 512, 1024, 2048, 2048
@@ -61,7 +60,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    # 4-layer LSTM decoder conditioned on a latent vector z.
+    # LSTM decoder conditioned on a latent vector z.
 
     def __init__(self, vocab_size, embed_dim=256, hidden_dim=1024, latent_dim=512,
                  num_layers=4, dropout=0.1):
@@ -69,10 +68,11 @@ class Decoder(nn.Module):
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
+        self.latent_dim = latent_dim
 
         self.embedding   = nn.Embedding(vocab_size, embed_dim, padding_idx=PAD_IDX)
         self.lstm        = nn.LSTM(
-            input_size=embed_dim,
+            input_size=embed_dim + latent_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
@@ -89,10 +89,15 @@ class Decoder(nn.Module):
         c0 = self.z_to_c(z).view(self.num_layers, B, self.hidden_dim)
         return h0.contiguous(), c0.contiguous()
 
+    def _condition_inputs(self, embedded, z):
+        z_steps = z.unsqueeze(1).expand(-1, embedded.size(1), -1)
+        return torch.cat([embedded, z_steps], dim=-1)
+
     def forward(self, z, target_input):
         h0, c0   = self._init_hidden(z)
         embedded = self.embedding(target_input)
-        output, _ = self.lstm(embedded, (h0, c0))
+        conditioned = self._condition_inputs(embedded, z)
+        output, _ = self.lstm(conditioned, (h0, c0))
         return self.output_proj(output)
 
     @torch.no_grad()
@@ -107,7 +112,8 @@ class Decoder(nn.Module):
 
         for _ in range(max_len):
             emb = self.embedding(token)
-            out, (h, c) = self.lstm(emb, (h, c))
+            conditioned = self._condition_inputs(emb, z)
+            out, (h, c) = self.lstm(conditioned, (h, c))
             logits = self.output_proj(out.squeeze(1))
 
             if greedy:
@@ -173,17 +179,17 @@ class VAE(nn.Module):
 
 class PropertyPredictor(nn.Module):
     # MLP that predicts QED, SA, SCScore, SYBA, or MW from a latent vector.
-
-    def __init__(self, latent_dim=512, hidden_dim=512):
+    def __init__(self, latent_dim=512, hidden_dim=256):
         super().__init__()
+        mid_dim = max(64, hidden_dim // 4)
         self.net = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_dim, 128),
+            nn.Linear(hidden_dim, mid_dim),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(mid_dim, 1),
         )
 
     def forward(self, z):
@@ -194,3 +200,23 @@ class PropertyPredictor(nn.Module):
 
     def predict_sa(self, z):
         return 1.0 + 9.0 * torch.sigmoid(self.forward(z))
+
+
+class NormalizedPropertyPredictor(nn.Module):
+    # Standardization: z_norm = (z - x_mean) / x_std,
+    # and y_norm = (property - y_mean) / y_std.
+
+    def __init__(self, input_dim, output_dim, hidden_dim=256, dropout=0.1):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, output_dim),
+        )
+
+    def forward(self, x):
+        return self.net(x)

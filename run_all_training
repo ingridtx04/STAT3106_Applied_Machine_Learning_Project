@@ -2,13 +2,28 @@
 set -euo pipefail
 
 # ── Configuration ───────────────────────────────────────
-MAX_ROWS_TRAIN=1000000    # molecules for VAE and LSTM training
-MAX_ROWS_PRED=50000      # molecules for property predictor training
-SEED=42
+MAX_ROWS_TRAIN=${MAX_ROWS_TRAIN:-1000000}    # molecules for VAE and LSTM training
+MAX_ROWS_PRED=${MAX_ROWS_PRED:-50000}        # molecules for property predictor training
+SAMPLE_POOL_ROWS=${SAMPLE_POOL_ROWS:-$MAX_ROWS_TRAIN}
+SEED=${SEED:-42}
+CKPT_DIR=${CKPT_DIR:-checkpoints}
+PREDICTOR_DIR=${PREDICTOR_DIR:-checkpoints/predictors}
+RESULTS_DIR=${RESULTS_DIR:-results}
+PROPERTIES=${PROPERTIES:-qed,sa,mw}
+EMBED_DIM=${EMBED_DIM:-128}
+VAE_HIDDEN_DIM=${VAE_HIDDEN_DIM:-${HIDDEN_DIM:-480}}
+LSTM_HIDDEN_DIM=${LSTM_HIDDEN_DIM:-512}
+LATENT_DIM=${LATENT_DIM:-128}
+NUM_LAYERS=${NUM_LAYERS:-2}
+LAYER_DIMS=${LAYER_DIMS:-256,512}
+BATCH_SIZE=${BATCH_SIZE:-512}
+SAVE_EVERY=${SAVE_EVERY:-1}
+VAE_EPOCHS=${VAE_EPOCHS:-30}
+LSTM_EPOCHS=${LSTM_EPOCHS:-15}
+PRED_EPOCHS=${PRED_EPOCHS:-100}
 
-PYTHON=~/miniconda3/envs/stoa/bin/python
-LOG_DIR=logs
-mkdir -p "$LOG_DIR"
+PYTHON=${PYTHON:-"$HOME/miniconda3/envs/stoa/bin/python"}
+mkdir -p "$RESULTS_DIR"
 
 step() {
     echo ""
@@ -19,25 +34,28 @@ step() {
 }
 
 run() {
-    local n="$1" label="$2" script="$3" max_rows="$4"
+    local n="$1" label="$2" script="$3" max_rows="$4" epochs="$5" hidden_dim="$6"
     step "$n" "$label"
-    MAX_ROWS=$max_rows SEED=$SEED "$PYTHON" "$script" 2>&1 | tee "$LOG_DIR/${script%.py}.log"
+    MAX_ROWS=$max_rows SAMPLE_POOL_ROWS=$SAMPLE_POOL_ROWS EPOCHS=$epochs SEED=$SEED CKPT_DIR=$CKPT_DIR PREDICTOR_DIR=$PREDICTOR_DIR RESULTS_DIR=$RESULTS_DIR PROPERTIES=$PROPERTIES EMBED_DIM=$EMBED_DIM HIDDEN_DIM=$hidden_dim LATENT_DIM=$LATENT_DIM NUM_LAYERS=$NUM_LAYERS LAYER_DIMS=$LAYER_DIMS BATCH_SIZE=$BATCH_SIZE SAVE_EVERY=$SAVE_EVERY "$PYTHON" "$script" 2>&1 | tee "$RESULTS_DIR/${script%.py}.log"
     echo "[Step $n done] $(date '+%H:%M:%S')"
 }
 
 echo "PennyChem — full training pipeline"
 echo "  MAX_ROWS_TRAIN=$MAX_ROWS_TRAIN  MAX_ROWS_PRED=$MAX_ROWS_PRED  SEED=$SEED"
+echo "  SAMPLE_POOL_ROWS=$SAMPLE_POOL_ROWS for property heads"
+echo "  CKPT_DIR=$CKPT_DIR  PREDICTOR_DIR=$PREDICTOR_DIR  RESULTS_DIR=$RESULTS_DIR"
+echo "  PROPERTIES=$PROPERTIES"
+echo "  ARCH: embed=$EMBED_DIM vae_hidden=$VAE_HIDDEN_DIM lstm_hidden=$LSTM_HIDDEN_DIM latent=$LATENT_DIM layers=$NUM_LAYERS encoder_layers=$LAYER_DIMS"
+echo "  EPOCHS: VAE=$VAE_EPOCHS LSTM=$LSTM_EPOCHS PRED=$PRED_EPOCHS  BATCH_SIZE=$BATCH_SIZE SAVE_EVERY=$SAVE_EVERY"
 echo "Start: $(date '+%Y-%m-%d %H:%M:%S')"
 
-run 1 "VAE (BiLSTM encoder + property predictors)"  SMILE_VAE.py            $MAX_ROWS_TRAIN
-run 2 "LSTM baseline"                                train_lstm.py           $MAX_ROWS_TRAIN
-run 3 "MW predictor"                                 train_mw_predictor.py   $MAX_ROWS_PRED
-run 4 "SCScore predictor"                            train_scscore_predictor.py $MAX_ROWS_PRED
-run 5 "SYBA predictor"                               train_syba_predictor.py $MAX_ROWS_PRED
+run 1 "VAE (BiLSTM encoder + latent-conditioned decoder)" SMILE_VAE.py           $MAX_ROWS_TRAIN $VAE_EPOCHS  $VAE_HIDDEN_DIM
+run 2 "LSTM baseline"                                     train_lstm.py          $MAX_ROWS_TRAIN $LSTM_EPOCHS $LSTM_HIDDEN_DIM
+run 3 "Normalized property heads on frozen VAE latents"   train_property_heads.py $MAX_ROWS_PRED  $PRED_EPOCHS $VAE_HIDDEN_DIM
 
 echo ""
 echo "=========================================="
 echo "  All training complete"
 echo "  End: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "  Logs: $LOG_DIR/"
+echo "  Results: $RESULTS_DIR/"
 echo "=========================================="

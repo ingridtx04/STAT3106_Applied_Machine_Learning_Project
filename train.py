@@ -1,6 +1,5 @@
 import os
 import math
-import shutil
 
 import torch
 import torch.nn as nn
@@ -72,7 +71,9 @@ class VAETrainer:
         self.kl_weight_max  = kl_weight_max
         self.kl_cycle       = kl_cycle_period
         self.checkpoint_dir = checkpoint_dir
+        self.results_dir    = os.environ.get("RESULTS_DIR", "results")
         os.makedirs(checkpoint_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
 
         self.opt_vae  = torch.optim.Adam(vae.parameters(), lr=lr)
         self.opt_qed  = torch.optim.Adam(predictor_qed.parameters(), lr=lr)
@@ -93,10 +94,9 @@ class VAETrainer:
                 qeds.append(float(QED.qed(mol)))
                 sas.append(float(sascorer.calculateScore(mol)))
 
-        return (
-            torch.tensor(qeds, dtype=torch.float32, device=device).unsqueeze(1),
-            torch.tensor(sas,  dtype=torch.float32, device=device).unsqueeze(1),
-        )
+        qed_tensor = torch.tensor(qeds, dtype=torch.float32).unsqueeze(1)
+        sa_tensor = torch.tensor(sas, dtype=torch.float32).unsqueeze(1)
+        return qed_tensor.to(device, non_blocking=True), sa_tensor.to(device, non_blocking=True)
 
     def train_epoch(self, epoch):
         self.vae.train()
@@ -108,9 +108,11 @@ class VAETrainer:
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch} train", leave=False)
         for batch in pbar:
-            x       = batch["input"].to(self.device)
+            x_cpu   = batch["input"]                    # keep CPU copy for tokenizer decode
+            lengths_cpu = batch["lengths"]
+            x       = x_cpu.to(self.device)
             target  = batch["target"].to(self.device)
-            lengths = batch["lengths"].to(self.device)
+            lengths = lengths_cpu.to(self.device)
 
             out     = self.vae(x, lengths)
             logits  = out["logits"]
@@ -131,14 +133,16 @@ class VAETrainer:
 
             prop_loss_val = 0.0
             if train_prop:
-                # decode mu to SMILES for RDKit scoring 
-                with torch.no_grad():
-                    tokenizer = (
-                        self.train_loader.dataset.dataset.tokenizer
-                        if hasattr(self.train_loader.dataset, "dataset")
-                        else self.train_loader.dataset.tokenizer
-                    )
-                    smiles_batch = self.vae.decoder.sample(mu.detach(), tokenizer, max_len=120, greedy=True)
+                # recover input SMILES from token ids — no GPU decode needed, no TDR risk
+                tokenizer = (
+                    self.train_loader.dataset.dataset.tokenizer
+                    if hasattr(self.train_loader.dataset, "dataset")
+                    else self.train_loader.dataset.tokenizer
+                )
+                smiles_batch = [
+                    tokenizer.decode(x_cpu[i, :lengths_cpu[i]].tolist(), strip_special=True)
+                    for i in range(x_cpu.size(0))
+                ]
                 qed_true, sa_true = self._get_rdkit_scores(smiles_batch, self.device)
 
                 z_det    = mu.detach()
@@ -193,8 +197,7 @@ class VAETrainer:
         return {"recon": total_recon / n_batches, "kl": total_kl / n_batches, "loss": val_loss}
 
     def save_checkpoint(self, epoch, val_loss):
-        path = os.path.join(self.checkpoint_dir, f"vae_epoch{epoch:03d}.pt")
-        torch.save({
+        checkpoint = {
             "epoch":       epoch,
             "val_loss":    val_loss,
             "vae":         _to_cpu(self.vae.state_dict()),
@@ -204,11 +207,11 @@ class VAETrainer:
             "opt_qed":     _to_cpu(self.opt_qed.state_dict()),
             "opt_sa":      _to_cpu(self.opt_sa.state_dict()),
             "global_step": self.global_step,
-        }, path)
+        }
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             best_path = os.path.join(self.checkpoint_dir, "vae_best.pt")
-            shutil.copyfile(path, best_path)
+            torch.save(checkpoint, best_path)
 
     def load_checkpoint(self, path):
         ckpt = torch.load(path, map_location=self.device)
@@ -249,7 +252,7 @@ class VAETrainer:
                 self.save_checkpoint(epoch, val_metrics["loss"])
 
         # save loss history so compare.ipynb can plot it
-        history_path = os.path.join(self.checkpoint_dir, "loss_history.json")
+        history_path = os.path.join(self.results_dir, "vae_loss_history.json")
         with open(history_path, "w") as f:
             json.dump(history, f)
         return history

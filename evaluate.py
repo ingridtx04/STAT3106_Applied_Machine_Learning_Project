@@ -43,7 +43,7 @@ def novelty(unique_smiles, reference_set):
 
 
 def mean_qed(smiles_list):
-    # Mean drug-likeness score (QED) over valid molecules using RDKit
+    # Mean drug-likeness score (QED) over valid molecules, use RDKit
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None
@@ -53,7 +53,7 @@ def mean_qed(smiles_list):
 
 
 def mean_sa_score(smiles_list):
-    # Mean synthetic accessibility score (economic constraint), range [1, 10]
+    # Mean synthetic accessibility score, range [1, 10]
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None
@@ -93,7 +93,7 @@ def compute_metrics(generated_smiles, reference_set, lambda_=0.5):
 
 
 def mean_mw(smiles_list):
-    # Mean molecular weight (Da) over valid molecules
+    # Mean molecular weight over valid molecules
     from rdkit.Chem import Descriptors
     scores = []
     for smi in smiles_list:
@@ -115,7 +115,7 @@ def feasibility_rate(smiles_list, sa_threshold=4.0):
 
 
 def mean_scscore(smiles_list, scorer):
-    # Mean SCScore [1-5]; lower = easier to synthesize. Requires scscore package.
+    # Mean SCScore [1-5]; lower = easier to synthesize. Use scscore package.
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None
@@ -126,7 +126,7 @@ def mean_scscore(smiles_list, scorer):
 
 
 def mean_syba(smiles_list, syba):
-    # Mean SYBA score; higher = easier to synthesize. Requires syba package.
+    # Mean SYBA score; higher = easier to synthesize. Use syba package.
     scores = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi) if smi else None

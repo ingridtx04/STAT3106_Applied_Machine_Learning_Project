@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.pyc
+.codex
 
 # Check points
 checkpoints/
@@ -8,6 +9,10 @@ checkpoints_*
 
 # Dataset
 ZINC20-Druglike/
+scscore_repo/
 
 # Generated files
+logs/
+results/
+Linear_alg-prob-project/
 linear_alg-prob-project/

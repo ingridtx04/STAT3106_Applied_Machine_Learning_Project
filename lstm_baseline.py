@@ -62,14 +62,16 @@ class SMILESLanguageModel(nn.Module):
         return [tokenizer.decode(seq, strip_special=True) for seq in sequences]
 class LSTMTrainer:
     def __init__(self, model, train_loader, val_loader, device,
-                 lr=3e-4, checkpoint_dir="checkpoints_lstm"):
+                 lr=3e-4, checkpoint_dir="checkpoints"):
         self.model          = model.to(device)
         self.train_loader   = train_loader
         self.val_loader     = val_loader
         self.device         = device
         self.checkpoint_dir = checkpoint_dir
+        self.results_dir    = os.environ.get("RESULTS_DIR", "results")
         self.best_val_loss  = math.inf
         os.makedirs(checkpoint_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     def _loss(self, batch):
@@ -107,11 +109,10 @@ class LSTMTrainer:
                 n     += 1
         return total / n
     def save_checkpoint(self, epoch, val_loss):
-        path = os.path.join(self.checkpoint_dir, f"lstm_epoch{epoch:03d}.pt")
-        torch.save({"epoch": epoch, "val_loss": val_loss, "model": self.model.state_dict()}, path)
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
-            torch.save(torch.load(path), os.path.join(self.checkpoint_dir, "lstm_best.pt"))
+            path = os.path.join(self.checkpoint_dir, "lstm_best.pt")
+            torch.save({"epoch": epoch, "val_loss": val_loss, "model": self.model.state_dict()}, path)
 
     def fit(self, n_epochs, save_every=5):
         import json
@@ -126,7 +127,7 @@ class LSTMTrainer:
             if epoch % save_every == 0:
                 self.save_checkpoint(epoch, val_loss)
 
-        with open(os.path.join(self.checkpoint_dir, "loss_history.json"), "w") as f:
+        with open(os.path.join(self.results_dir, "lstm_loss_history.json"), "w") as f:
             json.dump(history, f)
 
         return history

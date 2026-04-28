@@ -9,13 +9,13 @@ from train import VAETrainer
 # config
 CSV_PATH   = "ZINC20-Druglike/zinc-druglike-cano.csv"
 VOCAB_PATH = "vocab.json"
-CKPT_DIR   = "checkpoints"
+CKPT_DIR   = os.environ.get("CKPT_DIR", "checkpoints")
 
-EMBED_DIM   = 256
-HIDDEN_DIM  = 512           # decoder hidden dim
-LATENT_DIM  = 256
-NUM_LAYERS  = 3
-LAYER_DIMS  = [256, 512, 1024]  # progressive BiLSTM encoder layer widths
+EMBED_DIM   = int(os.environ.get("EMBED_DIM", 128))
+HIDDEN_DIM  = int(os.environ.get("HIDDEN_DIM", 480))  # decoder hidden dim
+LATENT_DIM  = int(os.environ.get("LATENT_DIM", 128))
+NUM_LAYERS  = int(os.environ.get("NUM_LAYERS", 2))
+LAYER_DIMS  = [int(x) for x in os.environ.get("LAYER_DIMS", "256,512").split(",")]
 DROPOUT     = 0.1
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 512))
 LR         = float(os.environ.get("LR", 3e-4))
@@ -25,7 +25,7 @@ PROP_START = int(os.environ.get("PROP_START", 15))  # epoch to start training pr
 MAX_ROWS   = int(os.environ.get("MAX_ROWS", 500_000))
 SEED       = int(os.environ.get("SEED", 42))
 RESUME_FROM = os.environ.get("RESUME_FROM")
-SAVE_EVERY  = int(os.environ.get("SAVE_EVERY", 5))
+SAVE_EVERY  = int(os.environ.get("SAVE_EVERY", 1))
 
 
 def get_device():
@@ -80,6 +80,12 @@ if __name__ == "__main__":
     vae      = build_vae(tokenizer.vocab_size)
     pred_qed = PropertyPredictor(LATENT_DIM)
     pred_sa  = PropertyPredictor(LATENT_DIM)
+    n_params = sum(p.numel() for p in vae.parameters() if p.requires_grad)
+    print(
+        f"[VAE_Model] embed={EMBED_DIM} latent={LATENT_DIM} "
+        f"encoder_layers={LAYER_DIMS} decoder_hidden={HIDDEN_DIM} "
+        f"decoder_layers={NUM_LAYERS} params={n_params:,}"
+    )
 
     trainer = VAETrainer(
         vae, pred_qed, pred_sa,
